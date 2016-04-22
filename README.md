@@ -96,3 +96,5 @@ For {user}
 Using Nano Editor, paste the following to run the job daily at 11:50PM
 
 50 23 * * * /usr/local/bin/magento-file-backup.sh 2>&1 | tee output.txt | mail -s "Magento Filesystem Backup Cron Job" admin@example.com
+
+Write out and exit Nano Editor.
