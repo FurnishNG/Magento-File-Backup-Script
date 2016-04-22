@@ -1,0 +1,340 @@
+#!/bin/bash
+####################################
+#	Purpose			:	Daily Backup of Live Magento Folder and Syncing of Daily Backup File to Amazon S3
+# 	Created	on		:	21st April, 2016
+#	Created by		:	Ndianabasi Udonkang
+#	Last Modified		:	22th April, 2016
+#	Last Modified by	:	Ndianabasi Udonkang
+#
+#	References:
+#	1.	http://stackoverflow.com/questions/369758/how-to-trim-whitespace-from-a-bash-variable
+#	2.	http://www.cyberciti.biz/faq/linux-unix-formatting-dates-for-display/
+#	3.	http://stackoverflow.com/questions/13868821/shell-script-delete-folders-older-than-n-days
+#	4.	http://www.cyberciti.biz/tips/find-out-if-directory-exists.html
+#	5.	http://unix.stackexchange.com/questions/181423/how-to-assign-the-cat-output-of-a-bash-script-to-a-variable-in-another-script
+#	6.	http://stackoverflow.com/questions/13868821/shell-script-delete-folders-older-than-n-days
+#	7.	http://superuser.com/questions/1020680/how-to-mail-output-of-shell-script-as-a-cron-job
+#
+####################################
+
+echo "##########################################################"
+echo "#                                                        #"
+echo "#         Furnish.NG Magento Filesystem Backup           #"
+echo "#                                                        #"
+echo "#       Phase 1: Backup to Local Backup Directory        #"
+echo "#                                                        #"
+echo "##########################################################"
+
+
+#	Echo start time
+START_TIME=$(date +"%c")
+echo "Backup started $START_TIME."
+
+#	Generate Current Month
+MONTH=$(date +"%B")
+echo
+echo "Current month is $MONTH"
+
+#	Generate Current Year
+YEAR=$(date +"%Y")
+echo
+echo "Current year is $YEAR"
+
+#	Check if folder for current year exists. If true skip, else proceed to create directory for year
+YEAR_DIR="/var/backups/magento/$YEAR"
+
+echo
+echo "Checking if \"$YEAR_DIR\" exists..."
+ 
+if [ -d "$YEAR_DIR" ]
+then
+	echo
+	echo "$YEAR_DIR directory already exists!"
+	echo
+else
+	echo
+	echo "$YEAR_DIR directory not found!"
+	echo "Creating $YEAR_DIR now..."
+	mkdir -p $YEAR_DIR
+	echo "Checking if $YEAR_DIR has been created..."
+	if [ -d "$YEAR_DIR" ]
+	then
+		echo
+		echo "$YEAR_DIR was successful created!"
+		echo
+	else
+		echo
+		echo "$YEAR_DIR could not be created. Please check your folder permissions."
+		echo "Exiting now!"
+		exit 1
+	fi
+fi
+
+#	Check if folder for current month exists. If true skip, else proceed to create directory for month
+MONTH_DIR="/var/backups/magento/$YEAR/$MONTH"
+
+echo
+echo "Checking if \"$MONTH_DIR\" exists..." 
+if [ -d "$MONTH_DIR" ]
+then
+	echo
+	echo "$MONTH_DIR directory already exists!"
+	echo
+else
+	echo
+	echo "$MONTH_DIR directory not found!"
+	echo "Creating $MONTH_DIR now..."
+	mkdir -p $MONTH_DIR
+	echo "Checking if $YEAR_DIR has been created..."
+	if [ -d "$MONTH_DIR" ]
+	then
+		echo
+		echo "$MONTH_DIR was successful created!"
+		echo
+	else
+		echo
+		echo "$MONTH_DIR could not be created. Exiting now!"
+		exit 1
+	fi
+fi
+
+# 	What to backup. 
+MAGENTO_FOLDER="/var/www/magento"
+
+# 	Where to store backup file.
+BACKUP_FOLDER=$MONTH_DIR
+
+# 	Create archive filename.
+#
+#	Generate Current Time in DAY + DD-MM-YY + MN-HR-(AM/PM) format
+NOW_RAW=$(date +"%A_%d-%m-%Y_%l-%M%p")
+#	Bash function "date" keeps trailing whitespace when day of the month is less than 10.
+#	Remove any whitespace with command below
+NOW="$(echo -e "${NOW_RAW}" | tr -d '[[:space:]]')"
+
+BACKUP_FILENAME="Magento_Backup_$NOW.tgz"
+echo
+echo "Backup file is $BACKUP_FILENAME"
+
+# Print start status message.
+echo
+echo "Backing up $MAGENTO_FOLDER to $BACKUP_FOLDER as $BACKUP_FILENAME"
+echo "Depending on the size of your fat, sorry, file, this is going to be some serious workout..."
+echo "Let's burn it off!"
+echo
+
+# Backup the files using tar.
+tar czf $BACKUP_FOLDER/$BACKUP_FILENAME $MAGENTO_FOLDER
+COMPLETION_TIME=$(date +"%c")
+
+# Print end status message.
+echo
+echo "Workout, sorry, backup completed :)..."
+
+echo "Time of completion: $COMPLETION_TIME"
+echo "You gave Shaun T a run for his money... Be proud man!"
+echo
+
+# Long listing of files in $BACKUP_FOLDER to check file sizes.
+ls -lh $BACKUP_FOLDER
+echo
+echo
+
+
+echo "##########################################################"
+echo "#                                                        #"
+echo "#         Furnish.NG Magento Filesystem Backup           #"
+echo "#                                                        #"
+echo "#         Phase 2: Backup to Amazon S3 Bucket            #"
+echo "#                                                        #"
+echo "##########################################################"
+
+#	Ensure that AWS CLI is fully installed and configured
+#	See: http://aws.amazon.com/documentation/cli/ for the AWS CLI Documentation
+#	
+
+#	Please do not use s3://backups or s3:/file-backups as your S3 bucket name. Those are reserved S3 bucket names.
+#	Also note that underscores are not allowed in bucket names. Limit symbols to hypens and dots.
+#	Please do not add a trailing slash to the $S3_BUCKET variable
+
+S3_BUCKET="s3://file-backups-test-furnish-ng"
+echo
+echo "Preparing S3 bucket for storage..."
+echo
+echo "Attempting to create S3 bucket: \"$S3_BUCKET\"..."
+echo
+
+#	Attempting to create S3 bucket
+if  aws s3 mb "$S3_BUCKET" 2>&1 | grep -q 'failed'
+then
+	echo
+	echo "Bucket \"$S3_BUCKET\" could not be created"
+	echo "It's likely that Bucket \"$S3_BUCKET\" already exist or that bucket name is invalid"
+	echo "Let's try to upload to the same bucket. If this fails, then script will exit!"
+	echo
+else
+	echo "Bucket \"$S3_BUCKET\" was successfully created!"
+	echo
+	echo "Let's test if upload to \"$S3_BUCKET\" will be successful"
+fi
+
+
+TEMP_DIR=$YEAR_DIR/temp
+TEMP_FILENAME=$(cat /dev/urandom | tr -cd 'a-f0-9' | head -c 8)
+TEMP_FILE=$TEMP_DIR/$TEMP_FILENAME.tmp
+echo
+echo "Let's prepare the temp file to be uploaded. This will take no time..."
+echo
+echo "verifying if \"$TEMP_DIR\" already exists..."
+
+if [ -d "$TEMP_DIR" ]
+then
+       	echo
+        echo "\"$TEMP_DIR\" directory already exists!"
+       	echo
+else
+	echo "\"$TEMP_DIR\" directory does not exists!"
+	echo "Attempting to create \"$TEMP_DIR\" now..."
+	mkdir -p $TEMP_DIR
+	echo
+	echo "Checking if \"$TEMP_DIR\" has been created..."
+		
+	if [ -d "$TEMP_DIR" ]
+        then
+		echo
+		echo "\"$TEMP_DIR\" directory has been created!"
+	else
+		echo
+		echo "\"$TEMP_DIR\" could not be created!"
+		echo "Please check your folder permissions..."
+		echo "Enough said. Exiting now... Bye"
+		exit 1
+	fi
+fi
+	
+#Proceed to upload temporary file iF directory already exists or has been successfully created
+echo "$TEMP_FILENAME" > $TEMP_FILE
+echo
+echo "Checking if \"$TEMP_FILE\" was successfully created..."
+if [ -f "$TEMP_FILE" ]
+then
+	echo
+	echo "\"$TEMP_FILE\" file has been created!"
+else
+        echo
+        echo "\"$TEMP_FILE\" could not be created!"
+        echo "Please check your folder permissions..."
+        echo "Enough said. Exiting now... Bye"
+ 	exit 1
+fi
+	
+#Attempting to upload temp file to S3 Bucket
+echo
+echo "Attempting to upload \"$TEMP_FILE\"..."
+if aws s3 cp $TEMP_FILE $S3_BUCKET 2>&1 | grep -q 'upload:'
+then
+	echo "\"$TEMP_FILE\" was successfully uploaded to S3 bucket: \"$S3_BUCKET\""
+	echo "All is clear for the upload of \"$BACKUP_FOLDER/$BACKUP_FILENAME\""
+else
+	echo "\"$TEMP_FILE\" could not be uploaded."
+	echo "Ensure that your AWS environment is fully configured"
+	echo "Also ensure that the AWS user has sufficient privileges to put to the bucket. Please check your AWS IAM policies."
+	echo "Enough said. Exiting now. Bye!"
+	exit 1
+fi
+
+#	If temp file upload was successful. Let's proceed to upload the backup file
+echo
+echo "Now, attempting to upload the backup file to s3 bucket: \"$S3_BUCKET\"..."
+echo "This is some serious insanity workout... It could take a while...."
+echo "You are free to take five..."
+echo
+echo
+BACKUP_FILE=$BACKUP_FOLDER/$BACKUP_FILENAME
+if aws s3 cp $BACKUP_FILE $S3_BUCKET 2>&1 | grep -q 'upload:'
+then
+	echo "Wheew!! Wheew!! \"$BACKUP_FILE\" was successfully uploaded to S3 bucket: \"$S3_BUCKET\""
+else
+	echo "\"$BACKUP_FILE\" could not be uploaded."
+        echo "Ensure that your AWS environment is fully configured"
+        echo "Also ensure that the AWS user has sufficient privileges to put to the bucket. Please check your AWS IAM policies."
+        echo "Enough said. Exiting now. Bye!"
+	exit 1
+fi
+
+S3_UPLOAD_COMPLETION_TIME=$(date +"%c")
+
+# Print end status message.
+echo
+echo "S3 Backup was successful..."
+
+echo "Time of completion: $S3_UPLOAD_COMPLETION_TIME"
+echo
+
+echo "Deleting \"$TEMP_FILENAME.tmp\" from bucket: \"$S3_BUCKET\"..." 
+if aws s3 rm "$S3_BUCKET/$TEMP_FILENAME.tmp" 2>&1 | grep -q 'delete:'
+#	You can use this command to delete all temp files in your bucket: aws s3 rm "$S3_BUCKET" --recursive --exclude "*.tgz" --include "*.tmp"
+#	On the command line replace $S3_BUCKET with the actual S3 bucket e.g. s3://test-file-backup-bucket
+then
+	echo
+	echo "temp file \"$S3_BUCKET/$TEMP_FILENAME.tmp\" was successsful removed from S3 bucket \"$S3_BUCKET\""
+	echo
+else
+	echo "\"$S3_BUCKET/$TEMP_FILENAME.tmp\" could not be deleted from S3 bucket \"$S3_BUCKET\""
+       	echo "Ensure that your AWS environment is fully configured"
+        echo "Also ensure that the AWS user has sufficient privileges to remove files from the bucket. Please check your AWS IAM policies."
+	echo "Equally ensure that there is no trailing slash appended to the variable \"$S3_BUCKET\""
+        echo "Enough said. Exiting now. Bye!"
+	exit 1
+fi
+
+echo
+
+# Long listing of files in $S3_BUCKET.
+echo "Directory listing of \"$S3_BUCKET\""
+echo "DAY		TIME	SIZE		FILE NAME"
+aws s3 ls $S3_BUCKET
+
+echo
+echo
+
+echo "Wheew! That was some good workout. See ya tomorrow."
+echo
+echo
+
+echo "##########################################################"
+echo "#                                                        #"
+echo "#         Furnish.NG Magento Filesystem Backup           #"
+echo "#                                                        #"
+echo "#          Phase 3: Local Filesystem Cleanup             #"
+echo "#                                                        #"
+echo "##########################################################"
+
+#	This section of the script will remove files which are older than five days from the current's month backup directory
+#	The result of this is that five backup files will be left in each month's folder.
+#	You may want to schedule a cron job which will delete all files but the latest one for each month just before midnight each month
+#	This command could be of help: ls -t *pattern* | sed 1d | xargs rm
+#	Note that the above command might fail is your filenames contain spaces or symbols. Please use alphanumeric character and hyphen and underscores.
+echo
+echo
+echo "Deleting all files older than 5 days from \"$BACKUP_FOLDER\"..."
+echo
+find $BACKUP_FOLDER/* -type f -mtime +5 -exec rm -rf {} +
+echo "Files older than 5 days have been deleted, if any"
+echo
+echo "These are the current files in \"$BACKUP_FOLDER\""
+ls -lh $BACKUP_FOLDER
+echo
+echo
+echo "Deleting all files from \"$TEMP_DIR\"..."
+echo
+find $TEMP_DIR/* -type f -exec rm -rf {} +
+echo "All files in \"$TEMP_DIR\" have been deleted!"
+echo "Listing directory: \"$TEMP_DIR\""
+ls -lh $TEMP_DIR
+echo
+echo
+echo "Filesystem cleaned up successful"
+echo "Exiting gracefully"
+echo "Bye!"
+exit 0
