@@ -3,13 +3,13 @@ This bash script automates the process of backing up your Magento root directory
 It can equally be used for backing up any other folder.
 
 <h2>Prerequisite</h2>
-1.  Ensure that AWS CLI is fully installed on your server and AWS credentials setup for root and/or {user}
+1.Ensure that AWS CLI is fully installed on your server and AWS credentials setup for root and/or {user}
 
 On Ubuntu:
 
 \# aptitude install awscli
 
-2.  After installation, run:
+2.After installation, run:
 
 \# aws configure
 
@@ -17,7 +17,7 @@ Set up your AWS Access Key ID, AWS Secret Access Key, Default region name, and D
 
 See http://aws.amazon.com/documentation/cli/ for the AWS CLI Documentation
 
-3.  Install mailutils
+3.Install mailutils
 
 \# aptitude install mailutils
 
