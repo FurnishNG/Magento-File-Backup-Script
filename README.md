@@ -51,6 +51,8 @@ and paste into Nano Editor.
 
 On Line 45, set your Base Directory with no trailing slashes.
 
+// Ensure that you have read, write and execute access to the Base Directory.
+
 On Line 107, set your Magento Root Folder with no trailing slashes.
 
 On Line 165, set your S3 Bucket with no trailing slashes.
