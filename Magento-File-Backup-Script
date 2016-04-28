@@ -3,7 +3,7 @@
 #	Purpose			:	Daily Backup of Live Magento Folder and Syncing of Daily Backup File to Amazon S3
 # 	Created	on		:	21st April, 2016
 #	Created by		:	Ndianabasi Udonkang
-#	Last Modified		:	22th April, 2016
+#	Last Modified		:	28th April, 2016
 #	Last Modified by	:	Ndianabasi Udonkang
 #
 #	References:
@@ -170,19 +170,29 @@ echo "Attempting to create S3 bucket: \"$S3_BUCKET\"..."
 echo
 
 #	Attempting to create S3 bucket
-if  aws s3 mb "$S3_BUCKET" 2>&1 | grep -q 'failed'
+if aws s3 mb "$S3_BUCKET" 2>&1 | grep -q 'BucketAlreadyExists'
 then
 	echo
 	echo "Bucket \"$S3_BUCKET\" could not be created"
 	echo "It's likely that Bucket \"$S3_BUCKET\" already exist or that bucket name is invalid"
-	echo "Let's try to upload to the same bucket. If this fails, then script will exit!"
+	echo "Please check that this bucket name: \"$S3_BUCKET\" is not invalid or an AWS S3 reserved bucket name."
+    echo "Enough said. Exiting now... Bye"
+    exit 1
+fi
+if aws s3 mb "$S3_BUCKET" 2>&1 | grep -q 'BucketAlreadyOwnedByYou'
+then
 	echo
-else
-	echo "Bucket \"$S3_BUCKET\" was successfully created!"
+	echo "Bucket \"$S3_BUCKET\" already exist"
 	echo
 	echo "Let's test if upload to \"$S3_BUCKET\" will be successful"
+else
+	if aws s3 mb "$S3_BUCKET" 2>&1 | grep -q 'make_bucket'
+    then
+    	echo "Bucket \"$S3_BUCKET\" was successfully created!"
+		echo
+		echo "Let's test if upload to \"$S3_BUCKET\" will be successful"
+    fi
 fi
-
 
 TEMP_DIR=$YEAR_DIR/temp
 TEMP_FILENAME=$(cat /dev/urandom | tr -cd 'a-f0-9' | head -c 8)
@@ -298,7 +308,7 @@ echo
 # Long listing of files in $S3_BUCKET.
 echo "Directory listing of \"$S3_BUCKET\""
 echo "DAY		TIME	SIZE		FILE NAME"
-aws s3 ls $S3_BUCKET
+aws s3 ls $S3_BUCKET --human-readable --summarize
 
 echo
 echo
